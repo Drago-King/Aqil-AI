@@ -135,6 +135,107 @@ export default {
       );
     }
   }
+};
+    // Handle CORS preflight requests
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: CORS_HEADERS
+      });
+    }
+
+    try {
+      const url = new URL(request.url);
+
+      // Health check endpoint
+      if (url.pathname === "/health") {
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            service: "Aqil AI",
+            model: "Gemini 2.5 Flash"
+          }),
+          {
+            headers: {
+              "Content-Type": "application/json",
+              ...CORS_HEADERS
+            }
+          }
+        );
+      }
+
+      const prompt =
+        url.searchParams.get("q") ||
+        "Introduce yourself.";
+
+      if (!env.GEMINI_API_KEY) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "GEMINI_API_KEY is not configured."
+            }
+          }),
+          {
+            status: 500,
+            headers: {
+              "Content-Type": "application/json",
+              ...CORS_HEADERS
+            }
+          }
+        );
+      }
+
+      const geminiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: "user",
+                parts: [
+                  {
+                    text: `${SYSTEM_PROMPT}\n\nUser: ${prompt}`
+                  }
+                ]
+              }
+            ]
+          })
+        }
+      );
+
+      const data = await geminiResponse.json();
+
+      return new Response(
+        JSON.stringify(data),
+        {
+          status: geminiResponse.status,
+          headers: {
+            "Content-Type": "application/json",
+            ...CORS_HEADERS
+          }
+        }
+      );
+
+    } catch (error) {
+      return new Response(
+        JSON.stringify({
+          error: {
+            message: error.message || "Unknown error"
+          }
+        }),
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/json",
+            ...CORS_HEADERS
+          }
+        }
+      );
+    }
+  }
 };        }
       });
     }
