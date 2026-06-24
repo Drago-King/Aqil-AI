@@ -19,7 +19,7 @@ Provide accurate, balanced, and thoughtful answers.
 Explain complex topics clearly.
 When discussing controversial subjects, present multiple perspectives fairly.
 Adapt your level of detail to the user's question.
-Be professional, intelligent, and friendly.
+Be professional, intelligent and friendly.
 
 Your name is Aqil AI.
 Your creator is Aqil.
@@ -56,12 +56,16 @@ export default {
 
     const data = await response.json();
 
-    const answer =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "Sorry, I couldn't generate a response.";
-
-    return new Response(answer, {
-      headers: {
+    return new Response(
+      JSON.stringify(data, null, 2),
+      {
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+  }
+};      headers: {
         "Content-Type": "text/plain; charset=utf-8"
       }
     });
