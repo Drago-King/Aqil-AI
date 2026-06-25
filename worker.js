@@ -1,483 +1,995 @@
-const SYSTEM_PROMPT = `
-You are Aqil AI, an advanced AI assistant created by Aqil — a visionary developer from Tamil Nadu, India.
+/* ============================================================
+   AQIL AI — worker.js
+   Drop this single file into your Cloudflare Worker.
+   Set GEMINI_API_KEY as a secret in Cloudflare dashboard.
+   ============================================================ */
 
-IDENTITY:
-- Your name is Aqil AI. Never say you are Gemini, Google, or any other AI.
-- If asked who made you, say: "I was created by Aqil."
-- If asked what model powers you, say: "I run on a custom intelligence layer built by Aqil."
+const SYSTEM_PROMPT = `You are Aqil AI, an advanced personal AI assistant created by Aqil — a developer from Tamil Nadu, India.
+
+IDENTITY (never break these):
+- Your name is Aqil AI. You are NOT Gemini, Google AI, or any other product.
+- Creator: Aqil. If asked, say "I was built by Aqil."
+- If asked what model powers you: "I run on a custom intelligence layer built by Aqil."
 
 PERSONALITY:
-- Intelligent, calm, precise, and friendly
-- Slightly formal but approachable — never robotic
-- Never use filler like "Certainly!" or "Of course!" — get straight to the answer
-- Use clean structure: use **bold**, bullet points, and code blocks when helpful
+- Intelligent, precise, warm — never robotic or stiff
+- Get to the point. No filler like "Certainly!" or "Great question!"
+- Use structure (bold, bullets, code blocks) when it genuinely helps clarity
+- Short answers for simple questions. Detailed answers for complex ones.
 
 EXPERTISE:
-1. Programming — Python, JavaScript, web dev, algorithms, debugging
-2. Science — physics, chemistry, biology, space, engineering
-3. Medicine — symptoms, anatomy, drugs (education only; always advise seeing a doctor)
-4. Geopolitics — India, Middle East, global affairs, international relations
-5. History — world history, Tamil history, Islamic history, civilizations
-6. Economics — personal finance, markets, macroeconomics, investing
-7. Literature & Philosophy — classic and modern works, ethical reasoning
-8. Career & Productivity — study techniques, career paths, goal setting
+- Programming & software development (Python, JS, web, algorithms, debugging)
+- Science & engineering (physics, chemistry, biology, mathematics)
+- Medicine & health (education only — always add "consult a doctor" for personal cases)
+- Geopolitics & current affairs (India, Middle East, global)
+- History (world, Tamil, Islamic, colonial)
+- Economics & personal finance
+- Literature & philosophy
+- Career guidance & productivity
 
-RULES:
-- Always respond in the same language the user writes in
-- For code, always use triple backtick blocks with the language name
-- For medical questions, always end with a note to consult a real doctor
-- Be concise for simple questions, thorough for complex ones
-- If you don't know something, say so honestly — never hallucinate facts
+FORMATTING RULES:
+- Code: always use triple backtick blocks with language name
+- Math: write clearly in plain text
+- Lists: use bullet points or numbered lists when listing 3+ items
+- Never use excessive asterisks or markdown clutter
 
-EXAMPLE INTERACTIONS:
-User: who are you
-Aqil AI: I'm Aqil AI — your personal intelligence assistant, built by Aqil. I can help you with science, code, history, medicine, geopolitics, and much more. What do you need?
+LANGUAGE:
+- Respond in the same language the user writes in
+- Support English, Tamil, Arabic, Hindi naturally`;
 
-User: what is recursion
-Aqil AI: Recursion is when a function calls itself to solve a smaller version of the same problem. Every recursive function needs a base case to stop, and a recursive case to keep going.
-`;
-
-const getHTML = () => `<!DOCTYPE html>
+/* ── HTML SHELL ─────────────────────────────────────────── */
+function getHTML() {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Aqil AI — Intelligence Refined</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aqil AI</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Sora:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Sora:wght@600;700&display=swap">
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#09090f;--bg2:#111118;--bg3:#16161f;--bg4:#1c1c28;
-  --surface:#1e1e2e;--surface2:#252538;
-  --border:#2a2a40;--border2:#3a3a55;
-  --accent:#7c6af5;--accent2:#a98bf7;--accent3:#5f4ee0;
-  --text:#eeeeff;--text2:#9898c0;--text3:#55557a;
-  --teal:#4fc3a1;--coral:#f07070;--gold:#f5c518;
-  --success:#4ade80;--r:12px;--r2:8px;--r3:22px;
+/* ── RESET & ROOT ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --c-bg:       #0c0c14;
+  --c-surface:  #13131f;
+  --c-card:     #1a1a2e;
+  --c-border:   rgba(255,255,255,0.07);
+  --c-border2:  rgba(255,255,255,0.12);
+  --c-text:     #e8e8f5;
+  --c-muted:    #8888a8;
+  --c-faint:    #444466;
+  --c-accent:   #7c6af5;
+  --c-accent-h: #9580f7;
+  --c-accent-d: #5a4dd4;
+  --c-teal:     #3ecfa3;
+  --c-coral:    #f06b6b;
+  --c-gold:     #f0c060;
+  --c-green:    #4ade80;
+  --radius-sm:  6px;
+  --radius-md:  12px;
+  --radius-lg:  18px;
+  --radius-xl:  24px;
+  --sidebar-w:  260px;
+  --topbar-h:   56px;
 }
-html,body{height:100%;overflow:hidden}
-body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:15px;display:flex;flex-direction:column}
-.app{display:flex;height:100vh;overflow:hidden}
 
-/* SIDEBAR */
-.sidebar{width:256px;min-width:256px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:transform .3s ease}
-.sb-head{padding:18px 14px 14px;border-bottom:1px solid var(--border)}
-.logo{display:flex;align-items:center;gap:10px;text-decoration:none;margin-bottom:14px}
-.logo-mark{width:36px;height:36px;background:linear-gradient(135deg,#7c6af5,#a98bf7);border-radius:11px;display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-serif;font-weight:700;font-size:14px;color:#fff;letter-spacing:-.5px;flex-shrink:0}
-.logo-name{font-family:'Sora',sans-serif;font-size:17px;font-weight:700;color:var(--text)}
-.logo-name em{font-style:normal;color:var(--accent2)}
-.new-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;background:rgba(124,106,245,.15);border:1px solid rgba(124,106,245,.3);border-radius:var(--r2);color:var(--accent2);font-size:13px;font-weight:500;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s}
-.new-btn:hover{background:rgba(124,106,245,.25);border-color:var(--accent)}
-.sb-label{padding:14px 14px 6px;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text3)}
-.chat-list{flex:1;overflow-y:auto;padding:0 6px 8px}
-.chat-list::-webkit-scrollbar{width:3px}
-.chat-list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-.chat-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--r2);cursor:pointer;margin-bottom:1px;transition:background .15s}
-.chat-item:hover{background:var(--bg3)}
-.chat-item.active{background:var(--surface)}
-.chat-ic{color:var(--text3);flex-shrink:0}
-.chat-title{font-size:12.5px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.chat-item.active .chat-title{color:var(--text)}
-.sb-foot{padding:10px 6px;border-top:1px solid var(--border)}
-.user-row{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r2);cursor:pointer;transition:background .15s}
-.user-row:hover{background:var(--bg3)}
-.av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--teal));display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0;font-family:'Sora',sans-serif}
-.u-name{font-size:13px;font-weight:500;color:var(--text)}
-.u-sub{font-size:11px;color:var(--text3)}
+html, body { height: 100%; overflow: hidden; background: var(--c-bg); }
+body { font-family: 'Inter', system-ui, sans-serif; color: var(--c-text); font-size: 15px; line-height: 1.5; }
 
-/* MAIN */
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+/* ── LAYOUT ── */
+.layout { display: flex; height: 100vh; }
 
-/* TOPBAR */
-.topbar{height:54px;min-height:54px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 18px;gap:10px}
-.menu-btn{width:32px;height:32px;border-radius:var(--r2);background:none;border:none;color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
-.menu-btn:hover{background:var(--surface);color:var(--text)}
-.model-pill{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border2);border-radius:20px;padding:5px 12px;font-size:12.5px;color:var(--text);cursor:pointer;transition:border-color .2s}
-.model-pill:hover{border-color:var(--accent)}
-.status-dot{width:7px;height:7px;border-radius:50%;background:var(--success);flex-shrink:0;box-shadow:0 0 6px var(--success)}
-.tb-right{margin-left:auto;display:flex;gap:6px}
-.ic-btn{width:32px;height:32px;border-radius:var(--r2);background:none;border:1px solid var(--border);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
-.ic-btn:hover{background:var(--surface);color:var(--text);border-color:var(--border2)}
+/* ── SIDEBAR ── */
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
+  z-index: 50;
+}
+.sidebar-head { padding: 16px 14px 12px; }
+.logo { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; text-decoration: none; }
+.logo-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, #7c6af5, #3ecfa3);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Sora', sans-serif; font-weight: 700; font-size: 13px; color: #fff;
+  flex-shrink: 0; letter-spacing: -0.5px;
+}
+.logo-name { font-family: 'Sora', sans-serif; font-size: 16px; font-weight: 700; color: var(--c-text); }
+.logo-name span { color: var(--c-accent-h); }
 
-/* CHAT */
-.chat-wrap{flex:1;overflow-y:auto;padding:20px 0 8px}
-.chat-wrap::-webkit-scrollbar{width:4px}
-.chat-wrap::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-.chat-body{max-width:740px;margin:0 auto;padding:0 20px}
+.btn-new {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 9px 12px; border-radius: var(--radius-md);
+  background: rgba(124,106,245,0.12); border: 1px solid rgba(124,106,245,0.25);
+  color: var(--c-accent-h); font-size: 13px; font-weight: 500;
+  cursor: pointer; font-family: 'Inter', sans-serif;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-new:hover { background: rgba(124,106,245,0.22); border-color: rgba(124,106,245,0.5); }
+.btn-new svg { flex-shrink: 0; }
 
-/* WELCOME */
-.welcome{padding:50px 10px 30px;text-align:center}
-.wlc-icon{width:76px;height:76px;background:linear-gradient(135deg,#7c6af5,#a98bf7);border-radius:22px;display:flex;align-items:center;justify-content:center;margin:0 auto 22px;font-family:'Sora',sans-serif;font-size:28px;font-weight:700;color:#fff;box-shadow:0 8px 32px rgba(124,106,245,.3)}
-.wlc-title{font-family:'Sora',sans-serif;font-size:30px;font-weight:700;margin-bottom:10px}
-.wlc-title span{background:linear-gradient(120deg,#a98bf7,#4fc3a1);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.wlc-sub{font-size:15px;color:var(--text2);max-width:480px;margin:0 auto 32px;line-height:1.65}
-.sug-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;max-width:580px;margin:0 auto}
-.sug-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 15px;cursor:pointer;text-align:left;transition:all .2s}
-.sug-card:hover{border-color:var(--accent);background:var(--surface2);transform:translateY(-2px)}
-.sug-em{font-size:20px;margin-bottom:6px}
-.sug-t{font-size:13px;font-weight:500;color:var(--text);margin-bottom:3px}
-.sug-s{font-size:11.5px;color:var(--text3);line-height:1.4}
+.sidebar-label {
+  padding: 14px 14px 5px; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-faint);
+}
+.chat-list { flex: 1; overflow-y: auto; padding: 0 6px; }
+.chat-list::-webkit-scrollbar { width: 3px; }
+.chat-list::-webkit-scrollbar-thumb { background: var(--c-border2); border-radius: 2px; }
 
-/* MESSAGES */
-.msg{display:flex;gap:11px;margin-bottom:22px;animation:rise .28s ease}
-@keyframes rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
-.msg.user{flex-direction:row-reverse}
-.msg-av{width:31px;height:31px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;font-family:'Sora',sans-serif}
-.msg.user .msg-av{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
-.msg.ai .msg-av{background:var(--surface);border:1px solid var(--border2);font-size:11px;color:var(--accent2)}
-.msg-body{flex:1;min-width:0}
-.msg-who{font-size:11.5px;color:var(--text3);margin-bottom:5px;font-weight:500}
-.msg.user .msg-who{text-align:right}
-.msg-text{font-size:14.5px;line-height:1.75;color:var(--text)}
-.msg.user .msg-text{background:var(--surface);border:1px solid var(--border);border-radius:14px 3px 14px 14px;padding:10px 14px;display:inline-block;float:right;max-width:85%;clear:both}
-.msg.user::after{content:'';display:table;clear:both}
-.msg-acts{display:flex;gap:4px;margin-top:8px;opacity:0;transition:opacity .2s}
-.msg:hover .msg-acts{opacity:1}
-.act{width:26px;height:26px;border-radius:6px;background:none;border:1px solid var(--border);color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .18s}
-.act:hover{background:var(--surface2);color:var(--text);border-color:var(--border2)}
+.chat-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  cursor: pointer; margin-bottom: 1px;
+  transition: background 0.12s;
+  border: 1px solid transparent;
+}
+.chat-item:hover { background: var(--c-card); }
+.chat-item.active { background: var(--c-card); border-color: var(--c-border); }
+.chat-item-icon { color: var(--c-faint); flex-shrink: 0; }
+.chat-item-text { font-size: 13px; color: var(--c-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-item.active .chat-item-text { color: var(--c-text); }
 
-/* TYPING */
-.typing-wrap{display:flex;gap:11px;margin-bottom:22px}
-.typing-dots{display:flex;gap:5px;padding:4px 0}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--accent);opacity:.4;animation:pulse 1.2s infinite}
-.dot:nth-child(2){animation-delay:.2s}
-.dot:nth-child(3){animation-delay:.4s}
-@keyframes pulse{0%,80%,100%{transform:scale(1);opacity:.4}40%{transform:scale(1.3);opacity:1}}
+.sidebar-foot { padding: 10px 6px; border-top: 1px solid var(--c-border); }
+.user-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  cursor: pointer; transition: background 0.12s;
+}
+.user-row:hover { background: var(--c-card); }
+.user-av {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--c-accent), var(--c-teal));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff; font-family: 'Sora', sans-serif; flex-shrink: 0;
+}
+.user-name { font-size: 13px; font-weight: 500; color: var(--c-text); }
+.user-sub { font-size: 11px; color: var(--c-faint); }
 
-/* MARKDOWN INSIDE AI BUBBLE */
-.ai-content p{margin-bottom:10px}
-.ai-content p:last-child{margin-bottom:0}
-.ai-content strong{color:#c8b4fb;font-weight:600}
-.ai-content em{color:var(--text2)}
-.ai-content h3{font-size:15px;font-weight:600;color:var(--text);margin:14px 0 6px}
-.ai-content ul,.ai-content ol{margin:8px 0 8px 20px;color:var(--text2);line-height:1.7}
-.ai-content li{margin-bottom:4px}
-.ai-content blockquote{border-left:3px solid var(--accent);padding:8px 14px;color:var(--text2);margin:12px 0;background:rgba(124,106,245,.08);border-radius:0 var(--r2) var(--r2) 0;font-style:italic}
-.ai-content code{background:#0d0d1a;padding:2px 6px;border-radius:5px;font-family:'SF Mono',Consolas,monospace;font-size:13px;color:#c0b0f5;border:1px solid var(--border)}
-.code-block{background:#0b0b14;border:1px solid var(--border);border-radius:var(--r2);margin:12px 0;overflow:hidden}
-.code-head{display:flex;align-items:center;justify-content:space-between;padding:7px 13px;background:var(--bg3);border-bottom:1px solid var(--border)}
-.code-lang{font-size:11.5px;color:var(--text3);font-family:monospace;text-transform:uppercase;letter-spacing:.05em}
-.copy-code{font-size:11px;background:none;border:1px solid var(--border);border-radius:5px;color:var(--text3);padding:2px 8px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .2s}
-.copy-code:hover{background:var(--surface2);color:var(--text)}
-.code-pre{padding:14px;font-family:'SF Mono',Consolas,monospace;font-size:13px;line-height:1.65;color:#c0cff5;overflow-x:auto;white-space:pre}
+/* ── MAIN ── */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
 
-/* INPUT AREA */
-.input-zone{padding:14px 20px 18px;background:var(--bg2);border-top:1px solid var(--border)}
-.input-inner{max-width:740px;margin:0 auto}
-.chips{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
-.chip{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;background:var(--bg3);border:1px solid var(--border);font-size:11.5px;color:var(--text3);cursor:pointer;transition:all .2s;font-family:'Inter',sans-serif;white-space:nowrap}
-.chip:hover,.chip.on{border-color:var(--accent);color:var(--accent2);background:rgba(124,106,245,.1)}
-.input-box{background:var(--surface);border:1px solid var(--border2);border-radius:var(--r3);overflow:hidden;transition:border-color .2s}
-.input-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,106,245,.1)}
-.tool-row{display:flex;align-items:center;padding:8px 12px;gap:4px;border-bottom:1px solid var(--border)}
-.t-btn{display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:6px;background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .18s;white-space:nowrap}
-.t-btn:hover{background:var(--bg3);color:var(--text)}
-.t-div{width:1px;height:14px;background:var(--border);margin:0 2px;flex-shrink:0}
-.msg-row{display:flex;align-items:flex-end;padding:10px 14px}
-textarea#inp{flex:1;background:none;border:none;color:var(--text);font-size:14.5px;font-family:'Inter',sans-serif;line-height:1.6;resize:none;outline:none;max-height:180px;min-height:22px;display:block}
-textarea#inp::placeholder{color:var(--text3)}
-.send{width:36px;height:36px;border-radius:10px;background:var(--accent);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:8px;transition:all .2s}
-.send:hover{background:var(--accent3);transform:scale(1.06)}
-.send:disabled{background:var(--surface2);cursor:not-allowed;transform:none;opacity:.5}
-.foot-row{display:flex;align-items:center;justify-content:space-between;padding:7px 14px 2px}
-.badges{display:flex;gap:5px}
-.badge{font-size:10px;padding:2px 7px;border-radius:4px;background:var(--bg3);border:1px solid var(--border);color:var(--text3)}
-.hint{font-size:11px;color:var(--text3)}
-kbd{background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:10px}
+/* ── TOPBAR ── */
+.topbar {
+  height: var(--topbar-h); min-height: var(--topbar-h);
+  background: var(--c-surface); border-bottom: 1px solid var(--c-border);
+  display: flex; align-items: center; padding: 0 16px; gap: 10px; flex-shrink: 0;
+}
+.menu-btn {
+  width: 34px; height: 34px; border-radius: var(--radius-sm);
+  background: none; border: none; color: var(--c-muted);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s, color 0.12s; flex-shrink: 0;
+}
+.menu-btn:hover { background: var(--c-card); color: var(--c-text); }
 
-@media(max-width:680px){
-  .sidebar{position:fixed;inset:0 auto 0 0;z-index:200;transform:translateX(-100%)}
-  .sidebar.open{transform:none}
-  .sug-grid{grid-template-columns:1fr}
-  .wlc-title{font-size:22px}
-  .input-zone{padding:10px 12px 14px}
-  .chat-body{padding:0 12px}
+.model-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 20px;
+  background: var(--c-card); border: 1px solid var(--c-border2);
+  font-size: 12.5px; color: var(--c-text); cursor: pointer;
+  transition: border-color 0.15s; user-select: none;
+}
+.model-chip:hover { border-color: var(--c-accent); }
+.online-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--c-green);
+  box-shadow: 0 0 6px var(--c-green); flex-shrink: 0;
+  animation: pulse-dot 2.5s ease infinite;
+}
+@keyframes pulse-dot { 0%,100%{opacity:1;} 50%{opacity:0.5;} }
+
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: var(--radius-sm);
+  background: none; border: 1px solid var(--c-border);
+  color: var(--c-muted); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.icon-btn:hover { background: var(--c-card); color: var(--c-text); border-color: var(--c-border2); }
+.icon-btn.active { background: rgba(124,106,245,0.15); color: var(--c-accent-h); border-color: rgba(124,106,245,0.4); }
+
+/* ── CHAT AREA ── */
+.chat-scroll { flex: 1; overflow-y: auto; scroll-behavior: smooth; }
+.chat-scroll::-webkit-scrollbar { width: 4px; }
+.chat-scroll::-webkit-scrollbar-thumb { background: var(--c-border2); border-radius: 2px; }
+
+.chat-content { max-width: 780px; margin: 0 auto; padding: 20px 24px 8px; }
+
+/* ── WELCOME ── */
+.welcome { padding: 48px 0 36px; text-align: center; }
+.welcome-glow {
+  width: 72px; height: 72px; border-radius: 20px;
+  background: linear-gradient(135deg, #7c6af5, #3ecfa3);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 22px;
+  font-family: 'Sora', sans-serif; font-size: 26px; font-weight: 700; color: #fff;
+  box-shadow: 0 0 0 1px rgba(124,106,245,0.3), 0 8px 32px rgba(124,106,245,0.25);
+}
+.welcome h1 {
+  font-family: 'Sora', sans-serif; font-size: 28px; font-weight: 700;
+  color: var(--c-text); margin-bottom: 10px; line-height: 1.2;
+}
+.welcome h1 em {
+  font-style: normal;
+  background: linear-gradient(120deg, #a98bf7, #3ecfa3);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.welcome p { font-size: 15px; color: var(--c-muted); max-width: 460px; margin: 0 auto 32px; line-height: 1.65; }
+
+.suggestions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 600px; margin: 0 auto; }
+.sug {
+  background: var(--c-card); border: 1px solid var(--c-border);
+  border-radius: var(--radius-md); padding: 14px 16px;
+  cursor: pointer; text-align: left; transition: border-color 0.15s, transform 0.15s, background 0.15s;
+}
+.sug:hover { border-color: rgba(124,106,245,0.5); background: #1e1e36; transform: translateY(-2px); }
+.sug-icon { font-size: 18px; margin-bottom: 7px; display: block; }
+.sug-title { font-size: 13px; font-weight: 500; color: var(--c-text); margin-bottom: 3px; }
+.sug-sub { font-size: 12px; color: var(--c-faint); line-height: 1.4; }
+
+/* ── MESSAGES ── */
+.msg { display: flex; gap: 12px; margin-bottom: 24px; animation: msg-in 0.25s ease; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.msg.user { flex-direction: row-reverse; }
+
+.msg-avatar {
+  width: 32px; height: 32px; border-radius: 9px;
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; font-family: 'Sora', sans-serif;
+}
+.msg.ai .msg-avatar { background: var(--c-card); border: 1px solid var(--c-border2); color: var(--c-accent-h); font-size: 10px; }
+.msg.user .msg-avatar { background: linear-gradient(135deg, var(--c-accent), var(--c-accent-h)); color: #fff; }
+
+.msg-body { flex: 1; min-width: 0; }
+.msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.msg.user .msg-header { flex-direction: row-reverse; }
+.msg-name { font-size: 12.5px; font-weight: 500; color: var(--c-muted); }
+.msg-time { font-size: 11px; color: var(--c-faint); }
+
+/* User bubble */
+.msg.user .msg-bubble {
+  background: var(--c-card); border: 1px solid var(--c-border2);
+  border-radius: var(--radius-md) 3px var(--radius-md) var(--radius-md);
+  padding: 10px 14px; display: inline-block; float: right; clear: both;
+  max-width: 85%; font-size: 14.5px; line-height: 1.65; color: var(--c-text);
+  white-space: pre-wrap; word-break: break-word;
+}
+.msg.user::after { content: ''; display: table; clear: both; }
+
+/* AI prose */
+.msg.ai .msg-bubble { font-size: 14.5px; line-height: 1.75; color: var(--c-text); }
+.msg.ai .msg-bubble p { margin-bottom: 10px; }
+.msg.ai .msg-bubble p:last-child { margin-bottom: 0; }
+.msg.ai .msg-bubble strong { color: #c4b0ff; font-weight: 600; }
+.msg.ai .msg-bubble em { color: var(--c-muted); }
+.msg.ai .msg-bubble h3 { font-size: 15px; font-weight: 600; color: var(--c-text); margin: 14px 0 6px; }
+.msg.ai .msg-bubble ul, .msg.ai .msg-bubble ol { margin: 8px 0 8px 20px; color: var(--c-muted); }
+.msg.ai .msg-bubble li { margin-bottom: 4px; line-height: 1.65; color: var(--c-text); }
+.msg.ai .msg-bubble blockquote {
+  border-left: 3px solid var(--c-accent); padding: 8px 14px;
+  background: rgba(124,106,245,0.07); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin: 10px 0; color: var(--c-muted); font-style: italic;
+}
+.msg.ai .msg-bubble code {
+  background: #0e0e1c; color: #b8a4f8;
+  padding: 2px 6px; border-radius: 4px;
+  font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size: 13px;
+  border: 1px solid rgba(124,106,245,0.2);
+}
+
+/* Code block */
+.code-block { background: #090910; border: 1px solid rgba(124,106,245,0.2); border-radius: var(--radius-md); margin: 12px 0; overflow: hidden; }
+.code-block-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; background: rgba(255,255,255,0.03); border-bottom: 1px solid rgba(124,106,245,0.15);
+}
+.code-lang { font-size: 11.5px; color: var(--c-faint); font-family: monospace; text-transform: uppercase; letter-spacing: 0.06em; }
+.code-copy {
+  font-size: 11.5px; color: var(--c-muted); background: none; border: 1px solid var(--c-border2);
+  border-radius: 4px; padding: 2px 9px; cursor: pointer; font-family: 'Inter', sans-serif;
+  transition: all 0.15s;
+}
+.code-copy:hover { background: var(--c-card); color: var(--c-text); }
+.code-pre {
+  padding: 14px 16px; font-family: 'SF Mono', Consolas, 'Courier New', monospace;
+  font-size: 13px; line-height: 1.65; color: #c8d3f5;
+  overflow-x: auto; white-space: pre;
+}
+.code-pre::-webkit-scrollbar { height: 3px; }
+.code-pre::-webkit-scrollbar-thumb { background: var(--c-border2); border-radius: 2px; }
+
+/* Message actions */
+.msg-actions { display: flex; align-items: center; gap: 4px; margin-top: 8px; opacity: 0; transition: opacity 0.15s; }
+.msg:hover .msg-actions { opacity: 1; }
+.msg-act {
+  width: 28px; height: 28px; border-radius: 6px; background: none;
+  border: 1px solid var(--c-border); color: var(--c-faint);
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.12s;
+}
+.msg-act:hover { background: var(--c-card); color: var(--c-text); border-color: var(--c-border2); }
+.msg-act svg { width: 13px; height: 13px; }
+
+/* Typing dots */
+.typing { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; animation: msg-in 0.25s ease; }
+.typing-dots { display: flex; gap: 5px; padding: 4px 0; }
+.typing-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--c-accent);
+  animation: bounce 1.2s ease infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bounce { 0%,80%,100%{transform:scale(0.7);opacity:0.4;} 40%{transform:scale(1);opacity:1;} }
+
+/* ── INPUT ZONE ── */
+.input-zone { padding: 12px 24px 18px; background: var(--c-surface); border-top: 1px solid var(--c-border); flex-shrink: 0; }
+.input-wrap { max-width: 780px; margin: 0 auto; }
+
+/* Mode chips */
+.mode-chips { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.mode-chip {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 11px; border-radius: 20px;
+  background: transparent; border: 1px solid var(--c-border);
+  color: var(--c-muted); font-size: 12px; cursor: pointer;
+  font-family: 'Inter', sans-serif; transition: all 0.12s; white-space: nowrap;
+}
+.mode-chip:hover { border-color: var(--c-border2); color: var(--c-text); }
+.mode-chip.active { background: rgba(124,106,245,0.12); border-color: rgba(124,106,245,0.4); color: var(--c-accent-h); }
+
+/* Input box */
+.input-box {
+  background: var(--c-card); border: 1px solid var(--c-border2);
+  border-radius: var(--radius-xl); overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input-box:focus-within { border-color: rgba(124,106,245,0.5); box-shadow: 0 0 0 3px rgba(124,106,245,0.08); }
+
+.input-tools {
+  display: flex; align-items: center; gap: 2px;
+  padding: 8px 14px; border-bottom: 1px solid var(--c-border);
+}
+.tool-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 9px; border-radius: var(--radius-sm);
+  background: none; border: none; color: var(--c-faint); font-size: 12px;
+  cursor: pointer; font-family: 'Inter', sans-serif; white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.tool-btn:hover { background: rgba(255,255,255,0.05); color: var(--c-text); }
+.tool-sep { width: 1px; height: 14px; background: var(--c-border); margin: 0 3px; flex-shrink: 0; }
+
+.input-row { display: flex; align-items: flex-end; padding: 10px 14px 10px 16px; gap: 8px; }
+#msgInput {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--c-text); font-size: 15px; font-family: 'Inter', sans-serif;
+  line-height: 1.6; resize: none; max-height: 180px; min-height: 24px;
+  display: block;
+}
+#msgInput::placeholder { color: var(--c-faint); }
+
+.send-btn {
+  width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px;
+  background: var(--c-accent); border: none; color: #fff;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, transform 0.1s;
+}
+.send-btn:hover:not(:disabled) { background: var(--c-accent-h); }
+.send-btn:active:not(:disabled) { transform: scale(0.93); }
+.send-btn:disabled { background: var(--c-card); border: 1px solid var(--c-border); cursor: not-allowed; opacity: 0.5; }
+.send-btn svg { width: 17px; height: 17px; }
+
+.input-footer { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px 2px; }
+.input-badges { display: flex; gap: 5px; }
+.input-badge {
+  font-size: 10.5px; padding: 2px 8px; border-radius: 4px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--c-border); color: var(--c-faint);
+}
+.input-hint { font-size: 11.5px; color: var(--c-faint); }
+.input-hint kbd {
+  background: rgba(255,255,255,0.06); border: 1px solid var(--c-border);
+  border-radius: 3px; padding: 1px 5px; font-size: 10.5px; font-family: 'Inter', sans-serif;
+}
+
+/* ── TOAST ── */
+.toast {
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(8px);
+  background: var(--c-card); border: 1px solid var(--c-border2);
+  color: var(--c-text); font-size: 13px; padding: 8px 16px; border-radius: 20px;
+  opacity: 0; transition: all 0.25s; pointer-events: none; z-index: 999; white-space: nowrap;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── MOBILE OVERLAY SIDEBAR ── */
+@media (max-width: 720px) {
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0;
+    transform: translateX(-100%); box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+  }
+  .sidebar.open { transform: none; }
+  .sidebar-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    z-index: 49; display: none;
+  }
+  .sidebar-overlay.show { display: block; }
+  .suggestions { grid-template-columns: 1fr; }
+  .welcome { padding: 28px 0 24px; }
+  .welcome h1 { font-size: 22px; }
+  .input-zone { padding: 10px 14px 14px; }
+  .chat-content { padding: 16px 14px 8px; }
+  .input-tools { display: none; }
+  .mode-chips { display: none; }
 }
 </style>
 </head>
 <body>
-<div class="app">
+<div class="layout">
 
-<aside class="sidebar" id="sb">
-  <div class="sb-head">
-    <a class="logo" href="#">
-      <div class="logo-mark">Aq</div>
-      <div class="logo-name">Aqil <em>AI</em></div>
-    </a>
-    <button class="new-btn" onclick="newChat()">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      New conversation
-    </button>
-  </div>
-  <div class="sb-label">Recent</div>
-  <div class="chat-list" id="chatList">
-    <div class="chat-item active">
-      <svg class="chat-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-      <span class="chat-title">Current session</span>
-    </div>
-  </div>
-  <div class="sb-foot">
-    <div class="user-row">
-      <div class="av">Aq</div>
-      <div>
-        <div class="u-name">Aqil</div>
-        <div class="u-sub">Personal · Gemini 2.5 Flash</div>
-      </div>
-    </div>
-  </div>
-</aside>
+  <!-- SIDEBAR OVERLAY (mobile) -->
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
 
-<main class="main">
-  <div class="topbar">
-    <button class="menu-btn" onclick="document.getElementById('sb').classList.toggle('open')">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-    </button>
-    <div class="model-pill">
-      <div class="status-dot"></div>
-      Gemini 2.5 Flash
-      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--text3)"><polyline points="6 9 12 15 18 9"/></svg>
-    </div>
-    <div class="tb-right">
-      <button class="ic-btn" title="Clear chat" onclick="newChat()">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
-      </button>
-      <button class="ic-btn" title="Copy link" onclick="copyLink(this)">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head">
+      <a class="logo" href="#">
+        <div class="logo-icon">Aq</div>
+        <div class="logo-name">Aqil <span>AI</span></div>
+      </a>
+      <button class="btn-new" onclick="newChat()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        New conversation
       </button>
     </div>
-  </div>
 
-  <div class="chat-wrap" id="chatWrap">
-    <div class="chat-body" id="chatBody">
-      <div class="welcome" id="wlc">
-        <div class="wlc-icon">Aq</div>
-        <h1 class="wlc-title">Hello, I'm <span>Aqil AI</span></h1>
-        <p class="wlc-sub">Your personal intelligence, built for depth and precision. Ask anything — science, code, history, medicine, geopolitics, and beyond.</p>
-        <div class="sug-grid">
-          <div class="sug-card" onclick="use('Explain quantum entanglement in simple, intuitive terms')">
-            <div class="sug-em">⚛️</div>
-            <div class="sug-t">Quantum entanglement</div>
-            <div class="sug-s">Explained simply and intuitively</div>
-          </div>
-          <div class="sug-card" onclick="use('Write a Python function to reverse a linked list with comments')">
-            <div class="sug-em">💻</div>
-            <div class="sug-t">Write Python code</div>
-            <div class="sug-s">Reverse a linked list with comments</div>
-          </div>
-          <div class="sug-card" onclick="use('What are the geopolitical implications of BRICS expansion in 2025?')">
-            <div class="sug-em">🌍</div>
-            <div class="sug-t">BRICS expansion 2025</div>
-            <div class="sug-s">Geopolitical implications explained</div>
-          </div>
-          <div class="sug-card" onclick="use('Build me a daily productivity system as a student in India')">
-            <div class="sug-em">📚</div>
-            <div class="sug-t">Student productivity</div>
-            <div class="sug-s">A daily system tailored for India</div>
-          </div>
+    <div class="sidebar-label">Conversations</div>
+    <div class="chat-list" id="chatList">
+      <div class="chat-item active" id="currentChat">
+        <svg class="chat-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        <span class="chat-item-text">New conversation</span>
+      </div>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="user-row">
+        <div class="user-av">Aq</div>
+        <div>
+          <div class="user-name">Aqil</div>
+          <div class="user-sub">Personal · Gemini 2.5 Flash</div>
         </div>
       </div>
     </div>
-  </div>
+  </aside>
 
-  <div class="input-zone">
-    <div class="input-inner">
-      <div class="chips">
-        <button class="chip on" onclick="this.classList.toggle('on')">🌐 Web</button>
-        <button class="chip" onclick="this.classList.toggle('on')">💻 Code</button>
-        <button class="chip" onclick="this.classList.toggle('on')">🔬 Science</button>
-        <button class="chip" onclick="this.classList.toggle('on')">📖 Explain</button>
-        <button class="chip" onclick="this.classList.toggle('on')">🌏 Translate</button>
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <button class="menu-btn" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+
+      <div class="model-chip">
+        <span class="online-dot"></span>
+        Gemini 2.5 Flash
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
-      <div class="input-box">
-        <div class="tool-row">
-          <button class="t-btn" onclick="insert('Summarize this in clear bullet points:\\n\\n')">📋 Summarize</button>
-          <div class="t-div"></div>
-          <button class="t-btn" onclick="insert('Write well-commented code for:\\n\\n')">⌨️ Code</button>
-          <div class="t-div"></div>
-          <button class="t-btn" onclick="insert('Explain step by step:\\n\\n')">💡 Explain</button>
-          <div class="t-div"></div>
-          <button class="t-btn" onclick="insert('Translate to English:\\n\\n')">🌏 Translate</button>
-          <div class="t-div"></div>
-          <button class="t-btn" onclick="insert('Compare and contrast:\\n\\n')">⚖️ Compare</button>
-        </div>
-        <div class="msg-row">
-          <textarea id="inp" placeholder="Ask Aqil AI anything…" rows="1" oninput="resize(this);toggleSend()" onkeydown="onKey(event)"></textarea>
-          <button class="send" id="sendBtn" onclick="send()" disabled>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-          </button>
-        </div>
-        <div class="foot-row">
-          <div class="badges">
-            <span class="badge">Gemini 2.5 Flash</span>
-            <span class="badge" id="ctxBadge">0 messages</span>
+
+      <div class="topbar-right">
+        <button class="icon-btn" id="darkToggle" onclick="toggleDark()" title="Toggle theme">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </button>
+        <button class="icon-btn" onclick="clearChat()" title="Clear chat">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </button>
+        <button class="icon-btn" onclick="exportChat()" title="Export chat">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <button class="icon-btn" onclick="copyPageLink(this)" title="Share">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- CHAT SCROLL -->
+    <div class="chat-scroll" id="chatScroll">
+      <div class="chat-content" id="chatContent">
+
+        <!-- WELCOME -->
+        <div class="welcome" id="welcomeScreen">
+          <div class="welcome-glow">Aq</div>
+          <h1>Hello, I'm <em>Aqil AI</em></h1>
+          <p>Your personal intelligence assistant, built for depth and precision. Ask anything.</p>
+          <div class="suggestions">
+            <button class="sug" onclick="useSuggestion('Explain quantum entanglement in simple terms')">
+              <span class="sug-icon">⚛️</span>
+              <div class="sug-title">Quantum entanglement</div>
+              <div class="sug-sub">Explained simply and intuitively</div>
+            </button>
+            <button class="sug" onclick="useSuggestion('Write a Python function to check if a string is a palindrome')">
+              <span class="sug-icon">💻</span>
+              <div class="sug-title">Write Python code</div>
+              <div class="sug-sub">Palindrome checker with explanation</div>
+            </button>
+            <button class="sug" onclick="useSuggestion('What are the geopolitical implications of BRICS expansion in 2025?')">
+              <span class="sug-icon">🌍</span>
+              <div class="sug-title">BRICS 2025 analysis</div>
+              <div class="sug-sub">Geopolitical implications explained</div>
+            </button>
+            <button class="sug" onclick="useSuggestion('Build me a daily productivity system as a student in India')">
+              <span class="sug-icon">📚</span>
+              <div class="sug-title">Productivity system</div>
+              <div class="sug-sub">Tailored daily plan for students</div>
+            </button>
           </div>
-          <span class="hint"><kbd>Enter</kbd> send &nbsp;·&nbsp; <kbd>Shift+Enter</kbd> newline</span>
         </div>
+
+      </div>
+    </div>
+
+    <!-- INPUT ZONE -->
+    <div class="input-zone">
+      <div class="input-wrap">
+
+        <!-- Mode chips -->
+        <div class="mode-chips">
+          <button class="mode-chip active" onclick="toggleChip(this)">🌐 Web</button>
+          <button class="mode-chip" onclick="toggleChip(this)">💻 Code</button>
+          <button class="mode-chip" onclick="toggleChip(this)">🔬 Science</button>
+          <button class="mode-chip" onclick="toggleChip(this)">📖 Explain</button>
+          <button class="mode-chip" onclick="toggleChip(this)">🌏 Translate</button>
+          <button class="mode-chip" onclick="toggleChip(this)">⚖️ Compare</button>
+        </div>
+
+        <!-- Input box -->
+        <div class="input-box">
+          <div class="input-tools">
+            <button class="tool-btn" onclick="injectPrompt('Summarize the following in clear bullet points:\n\n')">📋 Summarize</button>
+            <span class="tool-sep"></span>
+            <button class="tool-btn" onclick="injectPrompt('Write clean, well-commented code for:\n\n')">⌨️ Code</button>
+            <span class="tool-sep"></span>
+            <button class="tool-btn" onclick="injectPrompt('Explain step by step:\n\n')">💡 Explain</button>
+            <span class="tool-sep"></span>
+            <button class="tool-btn" onclick="injectPrompt('Translate to English:\n\n')">🌏 Translate</button>
+            <span class="tool-sep"></span>
+            <button class="tool-btn" onclick="injectPrompt('Compare and contrast:\n\n')">⚖️ Compare</button>
+          </div>
+          <div class="input-row">
+            <textarea id="msgInput" placeholder="Ask Aqil AI anything…" rows="1"
+              oninput="handleInput()" onkeydown="handleKey(event)"></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled aria-label="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="19" x2="12" y2="5"/>
+                <polyline points="5 12 12 5 19 12"/>
+              </svg>
+            </button>
+          </div>
+          <div class="input-footer">
+            <div class="input-badges">
+              <span class="input-badge">Gemini 2.5 Flash</span>
+              <span class="input-badge" id="msgCount">0 messages</span>
+            </div>
+            <span class="input-hint"><kbd>Enter</kbd> send &nbsp;·&nbsp; <kbd>Shift+Enter</kbd> new line</span>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
-</main>
 </div>
 
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
 <script>
+/* ════════════════════════════════════════════
+   STATE
+════════════════════════════════════════════ */
 let history = [];
 let busy = false;
+let darkMode = false;
 
-const inp = document.getElementById('inp');
-const sendBtn = document.getElementById('sendBtn');
-const chatBody = document.getElementById('chatBody');
-const wlc = document.getElementById('wlc');
-const chatWrap = document.getElementById('chatWrap');
+/* ════════════════════════════════════════════
+   ELEMENTS
+════════════════════════════════════════════ */
+const input    = document.getElementById('msgInput');
+const sendBtn  = document.getElementById('sendBtn');
+const content  = document.getElementById('chatContent');
+const scroller = document.getElementById('chatScroll');
+const welcome  = document.getElementById('welcomeScreen');
+const counter  = document.getElementById('msgCount');
+const chatList = document.getElementById('chatList');
 
-function resize(el){
-  el.style.height='auto';
-  el.style.height=Math.min(el.scrollHeight,180)+'px';
-}
-function toggleSend(){
-  sendBtn.disabled = !inp.value.trim() || busy;
-}
-function onKey(e){
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}
-}
-function use(text){
-  inp.value=text;
-  resize(inp);
-  toggleSend();
-  send();
-}
-function insert(t){
-  inp.value=t;
-  inp.focus();
-  resize(inp);
-  toggleSend();
-}
-function newChat(){
-  history=[];
-  chatBody.innerHTML='';
-  chatBody.appendChild(wlc);
-  wlc.style.display='';
-  inp.value='';
-  toggleSend();
-  document.getElementById('ctxBadge').textContent='0 messages';
-}
-function copyLink(btn){
-  navigator.clipboard.writeText(location.href).catch(()=>{});
-  btn.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
-  setTimeout(()=>{btn.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';},2000);
+/* ════════════════════════════════════════════
+   INPUT HANDLING
+════════════════════════════════════════════ */
+function handleInput() {
+  input.style.height = 'auto';
+  input.style.height = Math.min(input.scrollHeight, 180) + 'px';
+  sendBtn.disabled = !input.value.trim() || busy;
 }
 
-function esc(t){return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-
-function md(text){
-  return text
-    .replace(/\`\`\`(\w*)\n([\s\S]*?)\`\`\`/g,(_,l,c)=>\`<div class="code-block"><div class="code-head"><span class="code-lang">\${l||'code'}</span><button class="copy-code" onclick="copyBlock(this)">Copy</button></div><pre class="code-pre">\${esc(c.trim())}</pre></div>\`)
-    .replace(/^### (.+)$/gm,'<h3>\$1</h3>')
-    .replace(/\*\*(.+?)\*\*/g,'<strong>\$1</strong>')
-    .replace(/\*(.+?)\*/g,'<em>\$1</em>')
-    .replace(/\`([^\`]+)\`/g,'<code>\$1</code>')
-    .replace(/^> (.+)$/gm,'<blockquote>\$1</blockquote>')
-    .replace(/^[-*] (.+)$/gm,'<li>\$1</li>')
-    .replace(/(<li>[\s\S]+?<\/li>)/g,'<ul>\$1</ul>')
-    .replace(/\n\n+/g,'</p><p>')
-    .replace(/^([^<].*)$/gm,'<p>\$1</p>');
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (!sendBtn.disabled) sendMessage();
+  }
 }
 
-function copyBlock(btn){
-  const txt=btn.closest('.code-block').querySelector('.code-pre').textContent;
-  navigator.clipboard.writeText(txt).catch(()=>{});
-  btn.textContent='Copied!';
-  setTimeout(()=>btn.textContent='Copy',1800);
+function injectPrompt(text) {
+  input.value = text;
+  handleInput();
+  input.focus();
 }
 
-function copyMsg(btn){
-  const t=btn.closest('.msg').querySelector('.msg-text');
-  navigator.clipboard.writeText(t.innerText).catch(()=>{});
+function useSuggestion(text) {
+  input.value = text;
+  handleInput();
+  sendMessage();
 }
 
-function addMsg(role,raw){
-  if(wlc) wlc.style.display='none';
-  const isUser=role==='user';
-  const d=document.createElement('div');
-  d.className='msg '+(isUser?'user':'ai');
-  const timeStr=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  d.innerHTML=\`
-    <div class="msg-av">\${isUser?'You':'AI'}</div>
-    <div class="msg-body">
-      <div class="msg-who">\${isUser?'You':'Aqil AI'} · \${timeStr}</div>
-      <div class="msg-text \${!isUser?'ai-content':''}">\${isUser?'<span>'+esc(raw)+'</span>':md(raw)}</div>
-      \${!isUser?\`<div class="msg-acts">
-        <button class="act" onclick="copyMsg(this)" title="Copy">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-        </button>
-        <button class="act" title="Good response">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>
-        </button>
-      </div>\`:''}
-    </div>\`;
-  chatBody.appendChild(d);
-  chatWrap.scrollTop=chatWrap.scrollHeight;
+function toggleChip(el) {
+  el.classList.toggle('active');
 }
 
-function showTyping(){
-  if(wlc) wlc.style.display='none';
-  const d=document.createElement('div');
-  d.className='typing-wrap';d.id='typing';
-  d.innerHTML='<div class="msg-av" style="width:31px;height:31px;border-radius:9px;background:var(--surface);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--accent2);font-family:Sora,sans-serif;flex-shrink:0">AI</div><div class="typing-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
-  chatBody.appendChild(d);
-  chatWrap.scrollTop=chatWrap.scrollHeight;
-}
-function removeTyping(){const t=document.getElementById('typing');if(t)t.remove();}
+/* ════════════════════════════════════════════
+   SEND MESSAGE
+════════════════════════════════════════════ */
+async function sendMessage() {
+  const text = input.value.trim();
+  if (!text || busy) return;
 
-async function send(){
-  const text=inp.value.trim();
-  if(!text||busy) return;
-  busy=true;sendBtn.disabled=true;
-  inp.value='';resize(inp);
-  history.push({role:'user',content:text});
-  addMsg('user',text);
+  busy = true;
+  sendBtn.disabled = true;
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Hide welcome screen on first message
+  if (welcome) welcome.style.display = 'none';
+
+  // Update sidebar title
+  if (history.length === 0) {
+    const item = document.getElementById('currentChat');
+    if (item) item.querySelector('.chat-item-text').textContent = text.slice(0, 42);
+  }
+
+  appendMessage('user', text);
   showTyping();
-  document.getElementById('ctxBadge').textContent=history.length+' messages';
 
-  // Add to sidebar history
-  if(history.length===1){
-    const li=document.createElement('div');
-    li.className='chat-item';
-    li.innerHTML='<svg class="chat-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span class="chat-title">'+esc(text.slice(0,38))+'</span>';
-    const list=document.getElementById('chatList');
-    list.insertBefore(li,list.firstChild);
-  }
-
-  try{
-    const res=await fetch('/',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({message:text,history:history.slice(0,-1)})
+  try {
+    const res = await fetch('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, history: history.slice() })
     });
-    const data=await res.json();
-    const reply=data.reply||'Sorry, I could not get a response.';
+
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const reply = data.reply || 'I could not generate a response. Please try again.';
+
     removeTyping();
-    history.push({role:'assistant',content:reply});
-    addMsg('ai',reply);
-    document.getElementById('ctxBadge').textContent=history.length+' messages';
-  } catch(e){
+    history.push({ role: 'user', content: text });
+    history.push({ role: 'assistant', content: reply });
+    appendMessage('ai', reply);
+    counter.textContent = Math.floor(history.length / 2) + ' messages';
+
+  } catch (err) {
     removeTyping();
-    addMsg('ai','⚠️ **Connection error.** Check your network or API key in Cloudflare.');
+    appendMessage('ai', '**Connection error.** Could not reach the AI. Please check your network and try again.\\n\\nError: ' + err.message);
   }
 
-  busy=false;
-  toggleSend();
-  inp.focus();
+  busy = false;
+  sendBtn.disabled = !input.value.trim();
+  input.focus();
 }
+
+/* ════════════════════════════════════════════
+   RENDER MESSAGES
+════════════════════════════════════════════ */
+function appendMessage(role, text) {
+  const isUser = role === 'user';
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  div.innerHTML =
+    '<div class="msg-avatar">' + (isUser ? 'You' : 'AI') + '</div>' +
+    '<div class="msg-body">' +
+      '<div class="msg-header">' +
+        '<span class="msg-name">' + (isUser ? 'You' : 'Aqil AI') + '</span>' +
+        '<span class="msg-time">' + time + '</span>' +
+      '</div>' +
+      '<div class="msg-bubble">' + (isUser ? escapeHtml(text) : renderMarkdown(text)) + '</div>' +
+      (!isUser ? '<div class="msg-actions">' +
+        '<button class="msg-act" onclick="copyText(this)" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>' +
+        '<button class="msg-act" onclick="thumbUp(this)" title="Good response"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg></button>' +
+        '<button class="msg-act" onclick="thumbDown(this)" title="Bad response"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/></svg></button>' +
+        '<button class="msg-act" onclick="regenMsg(this)" title="Regenerate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg></button>' +
+      '</div>' : '') +
+    '</div>';
+
+  content.appendChild(div);
+  scrollBottom();
+}
+
+function showTyping() {
+  removeTyping();
+  const div = document.createElement('div');
+  div.className = 'typing';
+  div.id = 'typingIndicator';
+  div.innerHTML =
+    '<div class="msg-avatar" style="background:var(--c-card);border:1px solid var(--c-border2);color:var(--c-accent-h);font-size:10px;font-family:Sora,sans-serif">AI</div>' +
+    '<div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+  content.appendChild(div);
+  scrollBottom();
+}
+
+function removeTyping() {
+  const el = document.getElementById('typingIndicator');
+  if (el) el.remove();
+}
+
+function scrollBottom() {
+  scroller.scrollTop = scroller.scrollHeight;
+}
+
+/* ════════════════════════════════════════════
+   MARKDOWN RENDERER
+════════════════════════════════════════════ */
+function escapeHtml(t) {
+  return t
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderMarkdown(text) {
+  // Escape HTML first in the raw text (outside code blocks)
+  let out = '';
+  const codeBlockRegex = /\`\`\`(\w*)\n?([\s\S]*?)\`\`\`/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codeBlockRegex.exec(text)) !== null) {
+    // Process text before this code block
+    out += processInline(text.slice(lastIndex, match.index));
+    // Add the code block
+    const lang = match[1] || 'code';
+    const code = match[2].trim();
+    out += '<div class="code-block">' +
+      '<div class="code-block-head">' +
+        '<span class="code-lang">' + escapeHtml(lang) + '</span>' +
+        '<button class="code-copy" onclick="copyCode(this)">Copy</button>' +
+      '</div>' +
+      '<pre class="code-pre">' + escapeHtml(code) + '</pre>' +
+    '</div>';
+    lastIndex = codeBlockRegex.lastIndex;
+  }
+  out += processInline(text.slice(lastIndex));
+  return out;
+}
+
+function processInline(text) {
+  return text
+    // Headings
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+    // Bold and italic
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // Inline code
+    .replace(/\`([^\`\n]+)\`/g, '<code>$1</code>')
+    // Blockquote
+    .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+    // Unordered list
+    .replace(/^[\-\*] (.+)$/gm, '<li>$1</li>')
+    .replace(/((<li>.*<\\/li>\\n?)+)/g, '<ul>$1</ul>')
+    // Ordered list
+    .replace(/^\\d+\\. (.+)$/gm, '<li>$1</li>')
+    // Paragraphs
+    .replace(/\\n\\n+/g, '</p><p>')
+    .replace(/^([^<\\n].+)$/gm, '<p>$1</p>')
+    .replace(/<p><\\/p>/g, '');
+}
+
+/* ════════════════════════════════════════════
+   MESSAGE ACTIONS
+════════════════════════════════════════════ */
+function copyText(btn) {
+  const bubble = btn.closest('.msg').querySelector('.msg-bubble');
+  navigator.clipboard.writeText(bubble.innerText || bubble.textContent).catch(() => {});
+  showToast('Copied to clipboard');
+}
+
+function copyCode(btn) {
+  const pre = btn.closest('.code-block').querySelector('.code-pre');
+  navigator.clipboard.writeText(pre.textContent).catch(() => {});
+  btn.textContent = 'Copied!';
+  setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+}
+
+function thumbUp(btn) {
+  btn.style.color = 'var(--c-green)';
+  showToast('Thanks for the feedback!');
+}
+
+function thumbDown(btn) {
+  btn.style.color = 'var(--c-coral)';
+  showToast('Feedback noted. Will improve.');
+}
+
+async function regenMsg(btn) {
+  if (busy || history.length < 2) return;
+  // Remove last AI message from DOM and history
+  const msgs = content.querySelectorAll('.msg');
+  const last = msgs[msgs.length - 1];
+  if (last && last.classList.contains('ai')) last.remove();
+  history.pop(); // remove last assistant
+  const lastUser = history[history.length - 1];
+  history.pop(); // remove last user
+
+  busy = true;
+  sendBtn.disabled = true;
+  appendMessage('user', lastUser.content);
+  showTyping();
+
+  try {
+    const res = await fetch('/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: lastUser.content, history: history.slice() })
+    });
+    const data = await res.json();
+    const reply = data.reply || 'Could not regenerate.';
+    removeTyping();
+    history.push({ role: 'user', content: lastUser.content });
+    history.push({ role: 'assistant', content: reply });
+    appendMessage('ai', reply);
+  } catch (e) {
+    removeTyping();
+    appendMessage('ai', '**Regeneration failed.** Please try again.');
+  }
+  busy = false;
+  sendBtn.disabled = false;
+}
+
+/* ════════════════════════════════════════════
+   CHAT MANAGEMENT
+════════════════════════════════════════════ */
+function newChat() {
+  // Save current to history list if it had messages
+  if (history.length > 0) {
+    const firstMsg = history[0]?.content || 'Conversation';
+    const li = document.createElement('div');
+    li.className = 'chat-item';
+    li.innerHTML =
+      '<svg class="chat-item-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>' +
+      '<span class="chat-item-text">' + firstMsg.slice(0, 38) + '</span>';
+    chatList.insertBefore(li, chatList.firstChild);
+  }
+
+  history = [];
+  busy = false;
+  sendBtn.disabled = true;
+  input.value = '';
+  input.style.height = 'auto';
+  counter.textContent = '0 messages';
+
+  // Clear and restore welcome
+  content.innerHTML = '';
+  const w = welcome.cloneNode(true);
+  w.style.display = '';
+  content.appendChild(w);
+  // Re-attach event handlers to cloned suggestions
+  w.querySelectorAll('.sug').forEach((el, i) => {
+    const texts = [
+      'Explain quantum entanglement in simple terms',
+      'Write a Python function to check if a string is a palindrome',
+      'What are the geopolitical implications of BRICS expansion in 2025?',
+      'Build me a daily productivity system as a student in India'
+    ];
+    el.onclick = () => useSuggestion(texts[i]);
+  });
+
+  const curr = document.getElementById('currentChat');
+  if (curr) curr.querySelector('.chat-item-text').textContent = 'New conversation';
+  closeSidebar();
+  input.focus();
+}
+
+function clearChat() {
+  if (history.length === 0) return;
+  if (!confirm('Clear this conversation?')) return;
+  newChat();
+}
+
+function exportChat() {
+  if (history.length === 0) { showToast('Nothing to export yet'); return; }
+  let text = 'Aqil AI — Conversation Export\n' + new Date().toLocaleString() + '\n\n';
+  history.forEach(m => {
+    text += (m.role === 'user' ? 'You' : 'Aqil AI') + ':\n' + m.content + '\n\n';
+  });
+  const a = document.createElement('a');
+  a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(text);
+  a.download = 'aqil-ai-chat-' + Date.now() + '.txt';
+  a.click();
+  showToast('Chat exported');
+}
+
+/* ════════════════════════════════════════════
+   UI HELPERS
+════════════════════════════════════════════ */
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('overlay');
+  sb.classList.toggle('open');
+  ov.classList.toggle('show');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+function toggleDark() {
+  darkMode = !darkMode;
+  if (darkMode) {
+    document.documentElement.style.setProperty('--c-bg', '#f5f5fa');
+    document.documentElement.style.setProperty('--c-surface', '#ffffff');
+    document.documentElement.style.setProperty('--c-card', '#eeeef8');
+    document.documentElement.style.setProperty('--c-border', 'rgba(0,0,0,0.08)');
+    document.documentElement.style.setProperty('--c-border2', 'rgba(0,0,0,0.13)');
+    document.documentElement.style.setProperty('--c-text', '#111128');
+    document.documentElement.style.setProperty('--c-muted', '#555570');
+    document.documentElement.style.setProperty('--c-faint', '#9999b8');
+  } else {
+    document.documentElement.style.setProperty('--c-bg', '#0c0c14');
+    document.documentElement.style.setProperty('--c-surface', '#13131f');
+    document.documentElement.style.setProperty('--c-card', '#1a1a2e');
+    document.documentElement.style.setProperty('--c-border', 'rgba(255,255,255,0.07)');
+    document.documentElement.style.setProperty('--c-border2', 'rgba(255,255,255,0.12)');
+    document.documentElement.style.setProperty('--c-text', '#e8e8f5');
+    document.documentElement.style.setProperty('--c-muted', '#8888a8');
+    document.documentElement.style.setProperty('--c-faint', '#444466');
+  }
+  document.getElementById('darkToggle').classList.toggle('active', darkMode);
+  showToast(darkMode ? 'Light mode' : 'Dark mode');
+}
+
+function copyPageLink(btn) {
+  navigator.clipboard.writeText(location.href).catch(() => {});
+  showToast('Link copied!');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// Auto-focus input on load
+window.addEventListener('load', () => input.focus());
 </script>
 </body>
 </html>`;
+}
 
+/* ── WORKER FETCH HANDLER ──────────────────────────────── */
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // ── CORS Preflight ──
+    /* CORS preflight */
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
@@ -488,65 +1000,74 @@ export default {
       });
     }
 
-    // ── Serve HTML Frontend (GET /) ──
+    /* Serve HTML frontend */
     if (request.method === 'GET' && url.pathname === '/') {
       return new Response(getHTML(), {
-        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache',
+        }
       });
     }
 
-    // ── AI API (POST /) ──
+    /* AI endpoint — POST / */
     if (request.method === 'POST' && url.pathname === '/') {
-      let userMessage = '';
-      let history = [];
-
+      let body;
       try {
-        const body = await request.json();
-        userMessage = body.message || '';
-        history = body.history || [];
+        body = await request.json();
       } catch {
-        return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
+        return jsonError(400, 'Invalid JSON');
       }
 
-      if (!userMessage.trim()) {
-        return new Response(JSON.stringify({ error: 'Empty message' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
+      const userMessage = (body.message || '').trim();
+      if (!userMessage) return jsonError(400, 'Empty message');
 
-      // Build Gemini conversation
-      const contents = [
-        ...history.map(h => ({
-          role: h.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: h.content }]
-        })),
-        { role: 'user', parts: [{ text: userMessage }] }
-      ];
+      const rawHistory = Array.isArray(body.history) ? body.history : [];
 
-      const geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: {
-              parts: [{ text: SYSTEM_PROMPT }]
-            },
-            contents,
-            generationConfig: {
-              temperature: 0.75,
-              maxOutputTokens: 2048,
-              topP: 0.95,
-            }
-          })
+      // Build Gemini contents array (multi-turn)
+      const contents = [];
+      for (const h of rawHistory) {
+        if (h.role === 'user' || h.role === 'assistant') {
+          contents.push({
+            role: h.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: h.content }]
+          });
         }
-      );
+      }
+      contents.push({ role: 'user', parts: [{ text: userMessage }] });
 
-      const data = await geminiResponse.json();
+      let geminiRes;
+      try {
+        geminiRes = await fetch(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + env.GEMINI_API_KEY,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              system_instruction: {
+                parts: [{ text: SYSTEM_PROMPT }]
+              },
+              contents,
+              generationConfig: {
+                temperature: 0.75,
+                maxOutputTokens: 2048,
+                topP: 0.95,
+                topK: 40,
+              },
+              safetySettings: [
+                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+              ]
+            })
+          }
+        );
+      } catch (e) {
+        return jsonError(502, 'Failed to reach Gemini API: ' + e.message);
+      }
+
+      const data = await geminiRes.json();
+
+      // Extract reply text
       const reply =
         data?.candidates?.[0]?.content?.parts?.[0]?.text ||
         data?.error?.message ||
@@ -555,12 +1076,18 @@ export default {
       return new Response(JSON.stringify({ reply }), {
         headers: {
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': '*',
         }
       });
     }
 
-    // ── 404 for anything else ──
     return new Response('Not found', { status: 404 });
   }
 };
+
+function jsonError(status, message) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+  });
+}
