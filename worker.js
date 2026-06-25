@@ -793,13 +793,13 @@ function processInline(text) {
     .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
     // Unordered list
     .replace(/^[\-\*] (.+)$/gm, '<li>$1</li>')
-    .replace(/((<li>.*<\\/li>\\n?)+)/g, '<ul>$1</ul>')
+    .replace(/((<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
     // Ordered list
-    .replace(/^\\d+\\. (.+)$/gm, '<li>$1</li>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
     // Paragraphs
-    .replace(/\\n\\n+/g, '</p><p>')
-    .replace(/^([^<\\n].+)$/gm, '<p>$1</p>')
-    .replace(/<p><\\/p>/g, '');
+    .replace(/\n\n+/g, '</p><p>')
+    .replace(/^([^<\n].+)$/gm, '<p>$1</p>')
+    .replace(/<p><\/p>/g, '');
 }
 
 /* ════════════════════════════════════════════
